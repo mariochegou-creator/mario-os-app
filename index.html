@@ -77,6 +77,21 @@
   }
   .btn-primary:active { transform: scale(0.98); }
   .btn-primary:disabled { opacity: 0.5; }
+  .btn-mic {
+    flex: 0 0 56px;
+    background: #262626;
+    color: var(--text);
+    font-size: 22px;
+  }
+  .btn-mic.recording {
+    background: #f87171;
+    color: #1a0000;
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
   .chips { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
   .chip {
     background: #262626;
@@ -112,6 +127,7 @@
 
     <div class="row">
       <button class="btn-primary" id="enviar">Enviar pro Cérebro 🚀</button>
+      <button class="btn-mic" id="mic">🎙️</button>
     </div>
 
     <div class="status" id="status"></div>
@@ -180,6 +196,75 @@
     }
 
     btn.addEventListener("click", enviar);
+
+    // ===== Gravação de áudio =====
+    const micBtn = document.getElementById("mic");
+    let mediaRecorder = null;
+    let chunks = [];
+    let gravando = false;
+
+    async function iniciarGravacao() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        chunks = [];
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+        mediaRecorder.onstop = enviarAudio;
+        mediaRecorder.start();
+        gravando = true;
+        micBtn.classList.add("recording");
+        statusEl.textContent = "🎙️ Gravando... toca de novo pra parar e enviar.";
+        statusEl.className = "status";
+      } catch (e) {
+        statusEl.textContent = "❌ Não consegui acessar o microfone: " + e.message;
+        statusEl.className = "status err";
+      }
+    }
+
+    function pararGravacao() {
+      if (mediaRecorder && gravando) {
+        mediaRecorder.stop();
+        mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+        gravando = false;
+        micBtn.classList.remove("recording");
+      }
+    }
+
+    async function enviarAudio() {
+      const blob = new Blob(chunks, { type: "audio/webm" });
+      statusEl.textContent = "📤 Enviando áudio pro cérebro...";
+      statusEl.className = "status";
+
+      const form = new FormData();
+      form.append("chat_id", CHAT_ID);
+      form.append("document", blob, "audio.webm");
+      form.append("caption", "🎙️ áudio do app Mário OS");
+
+      try {
+        const resp = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendDocument`, {
+          method: "POST",
+          body: form,
+        });
+        const data = await resp.json();
+        if (data.ok) {
+          statusEl.textContent = "✅ Áudio enviado! O Claude já está transcrevendo e processando.";
+          statusEl.className = "status ok";
+        } else {
+          throw new Error(data.description || "Erro desconhecido");
+        }
+      } catch (e) {
+        statusEl.textContent = "❌ Não consegui enviar o áudio: " + e.message;
+        statusEl.className = "status err";
+      }
+    }
+
+    micBtn.addEventListener("click", () => {
+      if (gravando) {
+        pararGravacao();
+      } else {
+        iniciarGravacao();
+      }
+    });
   </script>
 </body>
 </html>
